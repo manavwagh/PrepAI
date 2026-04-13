@@ -15,7 +15,8 @@ import {
   UserCircle
 } from "lucide-react";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 
 export default function MockInterviewRoom() {
@@ -25,6 +26,12 @@ export default function MockInterviewRoom() {
   const [currentQuestion, setCurrentQuestion] = useState("Tell me about a time you had to handle a conflict within your team.");
   const [transcription, setTranscription] = useState("");
   const [timeLeft, setTimeLeft] = useState(120); // 2 minutes per question
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  
+  const router = useRouter();
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -58,12 +65,85 @@ export default function MockInterviewRoom() {
     speakQuestion(currentQuestion);
   }, [currentQuestion]);
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-    if (!isRecording) {
-      // Simulate transcription starting
-      setTranscription("I once worked on a group project where...");
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        await handleTranscribe(audioBlob);
+        
+        // Stop all tracks to release the microphone
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      alert("Could not access microphone. Please check permissions.");
     }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleTranscribe = async (blob: Blob) => {
+    setIsTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", blob, "recording.webm");
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/interview/transcribe`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTranscription(data.transcription);
+      } else {
+        console.error("Transcription failed");
+      }
+    } catch (error) {
+      console.error("Transcription error:", error);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!transcription && !isRecording) {
+      if (!confirm("No answer recorded. Submit anyway?")) return;
+    }
+
+    setIsSubmitting(true);
+    // Simulate API call to save answer
+    setTimeout(() => {
+      setIsSubmitting(false);
+      router.push("/analytics"); // Go to results page
+    }, 1500);
   };
 
   return (
@@ -83,8 +163,12 @@ export default function MockInterviewRoom() {
                 {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
               </span>
             </div>
-            <button className="rounded-lg bg-primary px-6 py-2 text-sm font-bold text-white hover:bg-primary/90 transition-all">
-              Submit Answer
+            <button 
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="rounded-lg bg-primary px-6 py-2 text-sm font-bold text-white hover:bg-primary/90 transition-all disabled:opacity-50"
+            >
+              {isSubmitting ? "Submitting..." : "Submit Answer"}
             </button>
           </div>
         </div>
@@ -118,13 +202,15 @@ export default function MockInterviewRoom() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-800">
                     <MessageSquare className="h-4 w-4 text-zinc-400" />
                   </div>
-                  <span className="text-sm font-medium text-zinc-400">AI Transcription Active</span>
+                  <span className="text-sm font-medium text-zinc-400">
+                    {isTranscribing ? "Processing Audio..." : isRecording ? "AI Transcription Active" : transcription ? "Transcription Ready" : "Waiting for Audio"}
+                  </span>
                 </div>
                 <div className="flex gap-1">
                   {[1, 2, 3, 4, 5].map((i) => (
                     <motion.div
                       key={i}
-                      animate={{ height: isRecording ? [4, 12, 4] : 4 }}
+                      animate={{ height: isRecording || isTranscribing ? [4, 12, 4] : 4 }}
                       transition={{ duration: 1, repeat: Infinity, delay: i * 0.1 }}
                       className="w-1 rounded-full bg-primary"
                     />
@@ -151,18 +237,24 @@ export default function MockInterviewRoom() {
               </div>
             )}
 
-            {/* Transcription Overlay */}
             <AnimatePresence>
-              {isRecording && transcription && (
+              {((isRecording && transcription) || transcription || isTranscribing) && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 20 }}
-                  className="absolute bottom-24 left-6 right-6 p-4 rounded-xl bg-black/60 backdrop-blur-md border border-white/10"
+                  className="absolute bottom-24 left-6 right-6 p-4 rounded-xl bg-black/80 backdrop-blur-md border border-white/10 shadow-2xl z-10"
                 >
-                  <p className="text-zinc-300 italic text-sm">
-                    "{transcription}..."
-                  </p>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-primary mb-2 block">
+                    Your Response (Edit to correct)
+                  </label>
+                  <textarea
+                    value={transcription}
+                    onChange={(e) => setTranscription(e.target.value)}
+                    placeholder={isTranscribing ? "Processing audio..." : "Recording your answer..."}
+                    className="w-full bg-transparent border-none text-zinc-100 italic text-sm focus:ring-0 resize-none min-h-[60px]"
+                    readOnly={isTranscribing}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>

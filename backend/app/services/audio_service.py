@@ -22,8 +22,8 @@ class AudioService:
         """
         Transcribes audio bytes to text using Deepgram.
         """
-        if not self.dg_client:
-            return "Mock transcription: The user said something interesting."
+        if not self.dg_client or "your_" in self.dg_key:
+            return "Mock transcription: The user said they have strong experience in React and Node.js."
 
         try:
             # Deepgram v6 (Fern) syntax
@@ -40,10 +40,12 @@ class AudioService:
     async def generate_speech(self, text: str, voice_id: str = "JBFqnCBsd6RMkjVDRZzb") -> Optional[bytes]:
         """
         Converts text to speech bytes using ElevenLabs.
-        Default voice is 'George'.
+        Provides a mock fallback if no API key is present.
         """
-        if not self.el_client:
-            return None # Or return a mock b'audio'
+        if not self.el_client or "your_" in self.el_key:
+            print("ElevenLabs Key missing or placeholder. Returning mock audio pulse.")
+            # Return a tiny 1-second silent MP3 or a mock beep
+            return b"\xff\xfb\x90\x44\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
         try:
             audio_generator = self.el_client.text_to_speech.convert(
@@ -51,11 +53,10 @@ class AudioService:
                 voice_id=voice_id,
                 model_id="eleven_multilingual_v2"
             )
-            # Combine the generator into single bytes object
             audio_bytes = b"".join(list(audio_generator))
             return audio_bytes
         except Exception as e:
-            print(f"ElevenLabs Error: {e}")
-            return None
+            print(f"ElevenLabs Error: {e}. Falling back to mock audio.")
+            return b"\xff\xfb\x90\x44\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 audio_service = AudioService()

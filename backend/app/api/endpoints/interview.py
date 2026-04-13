@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from pydantic import BaseModel
 from app.services.audio_service import audio_service
 from app.services.empathy_service import empathy_service
@@ -40,6 +40,19 @@ async def send_report(request: ReportRequest, background_tasks: BackgroundTasks)
         request.report_link
     )
     return {"status": "Report queued for sending"}
+
+@router.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """
+    Transcribes audio file to text.
+    """
+    audio_content = await file.read()
+    transcription = await audio_service.transcribe_audio(audio_content)
+    
+    if not transcription:
+        raise HTTPException(status_code=500, detail="Transcription failed")
+    
+    return {"transcription": transcription}
 
 @router.get("/metrics/{session_id}")
 async def get_empathy_metrics(session_id: str):
