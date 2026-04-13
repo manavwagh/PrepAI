@@ -30,7 +30,7 @@ export default function RoadmapGenerator() {
     if (!generatedRoadmap) return;
 
     const doc = new jsPDF();
-    const primaryColor = [99, 102, 241]; // Indigo-500
+    const primaryColor: [number, number, number] = [99, 102, 241]; // Indigo-500
 
     // Header
     doc.setFontSize(22);
@@ -55,7 +55,7 @@ export default function RoadmapGenerator() {
         head: [[ "Task / Objective" ]],
         body: data.map(item => [item]),
         theme: 'striped',
-        headStyles: { fillColor: primaryColor },
+        headStyles: { fillColor: primaryColor as [number, number, number] },
         margin: { left: 14, right: 14 }
       });
 

@@ -60,7 +60,7 @@ export default function Navbar() {
               >
                 Dashboard
               </Link>
-              <UserButton afterSignOutUrl="/" />
+              <UserButton />
             </>
           ) : isLoaded ? (
             <SignInButton mode="modal">
@@ -101,7 +101,7 @@ export default function Navbar() {
                   Dashboard
                 </Link>
                 <div className="px-3 py-4 border-t border-white/5 mt-2">
-                  <UserButton afterSignOutUrl="/" showName />
+                  <UserButton showName />
                 </div>
               </>
             ) : isLoaded ? (
