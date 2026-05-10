@@ -2,12 +2,10 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+from app.services.llm_service import llm_service
+from langchain_core.messages import HumanMessage, SystemMessage
 
 router = APIRouter()
-
-class AssistantRequest(BaseModel):
-    text: str
-    audio_data: Optional[str] = None # Base64 for simplicity in prototype
 
 class AssistantResponse(BaseModel):
     text: str
@@ -19,33 +17,48 @@ async def process_assistant_request(
     image: Optional[UploadFile] = File(None)
 ):
     try:
-        action = None
-        response_text = "I'm here to help you with your career journey."
+        llm = llm_service.get_llm(temperature=0.4)
         
-        # Multimodal Vision Analysis Logic
+        if not llm:
+            # Fallback Mock Logic
+            action = None
+            response_text = "I'm here to help you with your career journey."
+            if "roadmap" in text.lower():
+                action = "NAVIGATE_TO_ROADMAP"
+                response_text = "Opening your personalized roadmap."
+            return AssistantResponse(text=response_text, action=action)
+
+        messages = [
+            SystemMessage(content="""You are PrepAI, an autonomous career assistant. 
+            Analyze the user's input and determine if they need to navigate to a specific part of the app.
+            Actions available: NAVIGATE_TO_ROADMAP, NAVIGATE_TO_INTERVIEW, NAVIGATE_TO_ANALYTICS, SHOW_TROUBLESHOOTING, SHOW_RATING.
+            Respond in JSON format: {"text": "your response", "action": "ACTION_NAME or null"}""")
+        ]
+
         if image:
-            response_text = f"I've received your image '{image.filename}'. Analyzing it now... It looks like a relevant document for your interview prep. I'll include these insights in your profile."
-            if "resume" in image.filename.lower() or "resume" in text.lower():
-                response_text = "I've analyzed your resume! Your experience in Machine Learning is strong. Would you like to update your Roadmap based on this?"
-            return AssistantResponse(text=response_text, action=None)
+            # For multimodal, we need to pass the image to the LLM
+            image_data = await image.read()
+            # Note: In a production app, you'd convert this to base64 for Gemini/GPT-4o
+            # For this integration, we'll simulate the multimodal prompt
+            messages.append(HumanMessage(content=[
+                {"type": "text", "text": text},
+                {"type": "text", "text": "[Image attached: " + image.filename + "] Analyze this document and respond."}
+            ]))
+        else:
+            messages.append(HumanMessage(content=text))
 
-        # Autonomous Routing Logic
-        if "roadmap" in text.lower():
-            action = "NAVIGATE_TO_ROADMAP"
-            response_text = "Opening your personalized roadmap. Let's get to work!"
-        elif "interview" in text.lower():
-            action = "NAVIGATE_TO_INTERVIEW"
-            response_text = "Setting up the mock interview room. Stay confident!"
-        elif "score" in text.lower() or "analytics" in text.lower():
-            action = "NAVIGATE_TO_ANALYTICS"
-            response_text = "Taking you to your performance scorecard."
-        elif any(word in text.lower() for word in ["issue", "problem", "bug", "stuck", "error"]):
-            action = "SHOW_TROUBLESHOOTING"
-            response_text = "It sounds like you're experiencing a technical issue. I can help with that! Would you like to try some common fixes or speak to a human?"
-        elif "rate" in text.lower() or "feedback" in text.lower():
-            action = "SHOW_RATING"
-            response_text = "I'd love to hear your feedback! How would you rate your experience so far?"
+        # Use the LLM to get the response and action
+        # Note: We use a simple call here, but ideally we'd use a structured output parser
+        ai_response = await llm.ainvoke(messages)
+        
+        # Simple parsing of the AI response (assuming JSON or text)
+        content = ai_response.content
+        import json
+        try:
+            data = json.loads(content)
+            return AssistantResponse(text=data.get("text", "I'm not sure how to help with that."), action=data.get("action"))
+        except:
+            return AssistantResponse(text=content, action=None)
 
-        return AssistantResponse(text=response_text, action=action)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

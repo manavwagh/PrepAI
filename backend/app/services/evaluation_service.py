@@ -1,6 +1,5 @@
-import os
-from typing import Dict, List
-from langchain_openai import ChatOpenAI
+from typing import List, Dict
+from app.services.llm_service import llm_service
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
@@ -12,10 +11,9 @@ class Evaluation(BaseModel):
     advice: str = Field(description="Actionable advice for the candidate")
 
 async def evaluate_response(question: str, response_text: str) -> Dict:
-    # Check for API Key
-    api_key = os.getenv("OPENAI_API_KEY")
+    llm = llm_service.get_llm(temperature=0.5)
     
-    if not api_key:
+    if not llm:
         # Fallback Mock Logic
         return {
             "score": 85,
@@ -31,7 +29,6 @@ async def evaluate_response(question: str, response_text: str) -> Dict:
         }
 
     # Actual AI Logic
-    llm = ChatOpenAI(model="gpt-4-turbo-preview", temperature=0.5)
     parser = JsonOutputParser(pydantic_object=Evaluation)
     
     prompt = ChatPromptTemplate.from_template(
